@@ -191,7 +191,7 @@ class DocumentProcessor:
         }
     
     def redact_pdf(self, file_path, redaction_items, output_path):
-        """Apply redactions to PDF file"""
+        """Apply redactions to PDF file with black boxes"""
         doc = fitz.open(file_path)
         
         for item in redaction_items:
@@ -199,15 +199,18 @@ class DocumentProcessor:
             if page_num < len(doc):
                 page = doc.load_page(page_num)
                 
-                # Find text instances and create redaction rectangles
+                # Find text instances and create black redaction rectangles
                 text_instances = page.search_for(item['text'])
                 for inst in text_instances:
-                    # Create redaction annotation
+                    # Create a black rectangle over the text
+                    page.draw_rect(inst, color=(0, 0, 0), fill=(0, 0, 0), width=0)
+                    
+                    # Also add redaction annotation for proper redaction
                     redact_annot = page.add_redact_annot(inst)
                     redact_annot.set_colors(stroke=[0, 0, 0], fill=[0, 0, 0])
                     redact_annot.update()
         
-        # Apply redactions
+        # Apply redactions to permanently remove the text
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
             page.apply_redactions()
@@ -217,24 +220,35 @@ class DocumentProcessor:
         return output_path
     
     def redact_docx(self, file_path, redaction_items, output_path):
-        """Apply redactions to DOCX file"""
+        """Apply redactions to DOCX file with black highlighting"""
         doc = Document(file_path)
         
         for para in doc.paragraphs:
             for item in redaction_items:
                 if item['text'] in para.text:
-                    para.text = para.text.replace(item['text'], '[REDACTED]')
+                    # Find and replace text with black highlighted placeholder
+                    text = para.text
+                    redacted_text = text.replace(item['text'], '█' * len(item['text']))
+                    para.text = redacted_text
+                    
+                    # Apply black highlighting to the redacted portion
+                    for run in para.runs:
+                        if '█' in run.text:
+                            run.font.highlight_color = 1  # Black highlight
+                            run.font.color.rgb = None  # Remove text color
         
         doc.save(output_path)
         return output_path
     
     def redact_txt(self, file_path, redaction_items, output_path):
-        """Apply redactions to TXT file"""
+        """Apply redactions to TXT file with black blocks"""
         with open(file_path, 'r', encoding='utf-8') as file:
             content = file.read()
         
         for item in redaction_items:
-            content = content.replace(item['text'], '[REDACTED]')
+            # Replace with black block characters (█) matching the length
+            black_block = '█' * len(item['text'])
+            content = content.replace(item['text'], black_block)
         
         with open(output_path, 'w', encoding='utf-8') as file:
             file.write(content)
